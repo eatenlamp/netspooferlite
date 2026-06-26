@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Spoofer Lite</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #121212; color: #eee; max-width: 500px; margin: auto; }
+    select, input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: none; background: #2a2a2a; color: #fff; font-size: 16px; }
+    button { background: #4CAF50; font-weight: bold; cursor: pointer; }
+    button:hover { background: #45a049; }
+    #resetBtn { background: #e53935; }
+    #resetBtn:hover { background: #c62828; }
+    .status { margin-top: 20px; padding: 10px; border-radius: 8px; background: #1e1e1e; }
+    .success { color: #8bc34a; }
+    .error { color: #e53935; }
+  </style>
+</head>
+<body>
+
+  <h2>🌐 Network Spoofer Lite</h2>
+  <p>Select a device or enter your own</p>
+
+  <select id="modelSelect">
+    <option value="Xiaomi 17 Ultra">Xiaomi 17 Ultra</option>
+    <option value="Xiaomi 17 Pro">Xiaomi 17 Pro</option>
+    <option value="Xiaomi 15 Ultra">Xiaomi 15 Ultra</option>
+    <option value="Galaxy S26 Ultra">Galaxy S26 Ultra</option>
+    <option value="Galaxy S26+">Galaxy S26+</option>
+    <option value="Pixel 10 Pro XL">Pixel 10 Pro XL</option>
+    <option value="Pixel 10 Pro">Pixel 10 Pro</option>
+    <option value="OnePlus 13">OnePlus 13</option>
+    <option value="CUSTOM">✏️ Custom model</option>
+  </select>
+
+  <input type="text" id="customModel" placeholder="e.g.: POCO F6" value="">
+
+  <input type="text" id="customManufacturer" placeholder="Manufacturer (e.g.: Xiaomi)" value="">
+
+  <button id="applyBtn">Apply</button>
+  <button id="resetBtn">Reset to original</button>
+
+  <div id="status" class="status">Ready</div>
+
+  <script>
+    const select = document.getElementById('modelSelect');
+    const customModel = document.getElementById('customModel');
+    const customManufacturer = document.getElementById('customManufacturer');
+    const status = document.getElementById('status');
+
+    select.addEventListener('change', () => {
+      if (select.value === 'CUSTOM') {
+        customModel.disabled = false;
+        customManufacturer.disabled = false;
+        customModel.focus();
+      } else {
+        customModel.disabled = true;
+        customModel.value = select.value;
+        customManufacturer.disabled = true;
+        const manufacturerMap = {
+          'Xiaomi 17 Ultra': 'Xiaomi',
+          'Xiaomi 17 Pro': 'Xiaomi',
+          'Xiaomi 15 Ultra': 'Xiaomi',
+          'Galaxy S26 Ultra': 'Samsung',
+          'Galaxy S26+': 'Samsung',
+          'Pixel 10 Pro XL': 'Google',
+          'Pixel 10 Pro': 'Google',
+          'OnePlus 13': 'OnePlus'
+        };
+        customManufacturer.value = manufacturerMap[select.value] || '';
+      }
+    });
+
+    customModel.addEventListener('input', () => {
+      if (customModel.value.length > 0) {
+        select.value = 'CUSTOM';
+        customModel.disabled = false;
+        customManufacturer.disabled = false;
+      }
+    });
+
+    customModel.disabled = true;
+    customManufacturer.disabled = true;
+    customModel.value = select.value;
+    customManufacturer.value = 'Xiaomi';
+
+    document.getElementById('applyBtn').addEventListener('click', () => {
+      let model = customModel.value.trim();
+      let manufacturer = customManufacturer.value.trim();
+
+      if (!model) {
+        status.innerHTML = '❌ Please enter or select a model';
+        return;
+      }
+
+      const config = `model=${model}\nmanufacturer=${manufacturer}`;
+      const writeCmd = `echo "${config}" > /data/adb/modules/netspooferlite/config.conf`;
+
+      if (typeof kernelsu !== 'undefined') {
+        kernelsu.exec(writeCmd);
+        const cmd1 = `resetprop ro.product.model "${model}"`;
+        const cmd2 = `resetprop ro.product.manufacturer "${manufacturer || 'Unknown'}"`;
+        const result1 = kernelsu.exec(cmd1);
+        const result2 = kernelsu.exec(cmd2);
+
+        if (result1.code === 0 && result2.code === 0) {
+          status.innerHTML = `✅ Applied and saved: ${model} (${manufacturer || 'Unknown'})`;
+          status.className = 'status success';
+        } else {
+          status.innerHTML = `❌ Error: ${result1.stderr || result2.stderr || 'unknown'}`;
+          status.className = 'status error';
+        }
+      } else {
+        status.innerHTML = `✅ (DEMO) Model: ${model}, Manufacturer: ${manufacturer || '—'}`;
+        status.className = 'status success';
+      }
+    });
+
+    // === КНОПКА СБРОСА ===
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      if (typeof kernelsu !== 'undefined') {
+        const readCmd = 'cat /data/adb/modules/netspooferlite/original_config.conf';
+        const result = kernelsu.exec(readCmd);
+
+        if (result.code === 0 && result.stdout) {
+          const lines = result.stdout.split('\n');
+          let defaultModel = 'POCO F6';
+          let defaultManufacturer = 'POCO';
+
+          lines.forEach(line => {
+            if (line.startsWith('model=')) defaultModel = line.replace('model=', '');
+            if (line.startsWith('manufacturer=')) defaultManufacturer = line.replace('manufacturer=', '');
+          });
+
+          customModel.value = defaultModel;
+          customManufacturer.value = defaultManufacturer;
+
+          const config = `model=${defaultModel}\nmanufacturer=${defaultManufacturer}`;
+          const writeCmd = `echo "${config}" > /data/adb/modules/netspooferlite/config.conf`;
+          kernelsu.exec(writeCmd);
+
+          const cmd1 = `resetprop ro.product.model "${defaultModel}"`;
+          const cmd2 = `resetprop ro.product.manufacturer "${defaultManufacturer}"`;
+          kernelsu.exec(cmd1);
+          kernelsu.exec(cmd2);
+
+          status.innerHTML = `✅ Reset to original: ${defaultModel}`;
+          status.className = 'status success';
+        } else {
+          status.innerHTML = '❌ Could not read original model';
+          status.className = 'status error';
+        }
+      } else {
+        status.innerHTML = '✅ (DEMO) Reset to original model';
+        status.className = 'status success';
+      }
+    });
+  </script>
+</body>
+</html>
